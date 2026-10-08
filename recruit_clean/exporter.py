@@ -10,6 +10,7 @@ import csv
 from pathlib import Path
 
 from .loader import REQUIRED_COLUMNS, Record
+from .stats import FILL_ORDER, Stats
 from .validator import ValidationResult
 
 #: 导出文件编码。
@@ -57,6 +58,54 @@ def write_issues_csv(
     return write_csv(path, header, rows)
 
 
+def write_records_csv(
+    records: list[Record],
+    path: str | Path,
+    columns: tuple[str, ...] = REQUIRED_COLUMNS,
+) -> Path:
+    """导出干净数据。
+
+    写入的是 strip 后的值——脏空格已经被清掉了。除此之外不改写原值
+    （比如邮箱域名的大小写保持原样，方便跟问题清单对照）。
+    """
+    rows = [[record.value(column) for column in columns] for record in records]
+    return write_csv(path, list(columns), rows)
+
+
+def write_stats_csv(stats: Stats, path: str | Path) -> Path:
+    """导出第一志愿汇总表：第一志愿 / 人数 / 占比。"""
+    total = stats.total or 1
+    rows = [
+        [name, count, f"{count / total * 100:.1f}%"] for name, count in stats.first_choice
+    ]
+    return write_csv(path, ["第一志愿", "人数", "占比"], rows)
+
+
+def write_fill_csv(stats: Stats, path: str | Path) -> Path:
+    """导出志愿填写情况：填写情况 / 人数 / 占比。"""
+    total = stats.total or 1
+    rows = [
+        [label, stats.fill[label], f"{stats.fill[label] / total * 100:.1f}%"]
+        for label in FILL_ORDER
+    ]
+    return write_csv(path, ["填写情况", "人数", "占比"], rows)
+
+
 def issues_csv_path(out_dir: str | Path) -> Path:
     """问题清单的默认输出路径。"""
     return Path(out_dir) / "issues.csv"
+
+
+def clean_csv_path(out_dir: str | Path) -> Path:
+    """干净数据的默认输出路径。"""
+    return Path(out_dir) / "clean.csv"
+
+
+def stats_csv_path(out_dir: str | Path) -> Path:
+    """第一志愿汇总表的默认输出路径。"""
+    return Path(out_dir) / "stats_first_choice.csv"
+
+
+def fill_csv_path(out_dir: str | Path) -> Path:
+    """志愿填写情况的默认输出路径。"""
+    return Path(out_dir) / "stats_choice_fill.csv"
