@@ -208,10 +208,43 @@ python main.py all       # 概览 → 校验 → 统计 → 导出，一次跑�
 - **排序**：人数降序；人数相同时按部门名升序，保证每次跑出来的表一模一样，
   方便跟上一届对比。
 
-## 开发计划
+## 项目结构
 
-本仓库按需求拆成三次提交 / 三个 PR，每个 PR 对应一个需求：
+```
+recruit-cleaner/
+├── main.py                     # 命令行入口：python main.py <子命令>
+├── recruit_clean/
+│   ├── loader.py               # 需求 1：读入 CSV（BOM / 脏空格处理）
+│   ├── overview.py             # 需求 1：行数、空值、完全重复行
+│   ├── validator.py            # 需求 2：学号 / 邮箱 / 重复报名校验
+│   ├── stats.py                # 需求 3：志愿统计
+│   ├── exporter.py             # 导出：问题清单 / 汇总表 / 干净数据
+│   ├── text.py                 # 终端表格排版（中文宽度对齐）
+│   └── cli.py                  # 子命令解析
+├── data/sample_recruits.csv    # 样例数据（43 行，含各类边界情况）
+├── tests/                      # 单元测试（22 条）
+└── output/                     # 运行产物，不入库
+```
 
-- [ ] PR #1 —— 需求 1：读入与概览
-- [ ] PR #2 —— 需求 2：校验与清洗
-- [ ] PR #3 —— 需求 3：统计与导出
+数据流：`读入 loader → 校验 validator → 干净数据 → 统计 stats → 导出 exporter`。
+每个环节都不写回原文件，`output/issues.csv` 记录被剔除的原因，`output/clean.csv`
+可直接丢进飞书或腾讯文档继续排面试。
+
+## 开发过程
+
+三个需求各一次提交、各一个 PR，均已合入 `main`：
+
+| PR | 需求 | 主要改动 |
+| --- | --- | --- |
+| [#1](https://github.com/4allthedog/recruit-cleaner/pull/1) 需求 1：读入与概览 | 读入 CSV、行数/空值/重复行概览 | `loader` / `overview` / `text`，CLI 骨架 |
+| [#2](https://github.com/4allthedog/recruit-cleaner/pull/2) 需求 2：校验与清洗 | 学号、邮箱、重复报名校验 + 问题清单 | `validator` / `exporter`，15 条单测 |
+| [#3](https://github.com/4allthedog/recruit-cleaner/pull/3) 需求 3：统计与导出 | 志愿统计 + 干净数据导出 | `stats` / `exporter`，7 条单测 |
+
+分支依次为 `feat/1-overview` → `feat/2-validate` → `feat/3-stats`，按序合并，
+因此每个 PR 的 diff 只含本需求的改动。
+
+## 已知限制
+
+- 不做学院 DNS 校验，邮箱只读格式与学号是否对应，不验证邮箱真实存在。
+- 学号位数默认不校验（见上文假设），需要时加 `--id-length`。
+- 重复报名固定保留首次出现，没有做成可配置项。
