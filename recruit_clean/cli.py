@@ -17,8 +17,18 @@ from pathlib import Path
 from typing import Sequence
 
 from . import overview as overview_module
+from . import stats as stats_module
 from . import validator as validator_module
-from .exporter import issues_csv_path, write_issues_csv
+from .exporter import (
+    clean_csv_path,
+    fill_csv_path,
+    issues_csv_path,
+    stats_csv_path,
+    write_fill_csv,
+    write_issues_csv,
+    write_records_csv,
+    write_stats_csv,
+)
 from .loader import CsvFormatError, DEFAULT_ENCODING, load_csv
 
 #: 不传路径时默认读仓库自带的样例数据，方便 clone 下来直接跑。
@@ -44,6 +54,24 @@ def build_parser() -> argparse.ArgumentParser:
     _add_encoding_argument(validate)
     _add_out_dir_argument(validate)
     _add_id_length_argument(validate)
+
+    stats = subcommands.add_parser("stats", help="需求 3：志愿分组统计")
+    _add_input_argument(stats)
+    _add_encoding_argument(stats)
+    _add_out_dir_argument(stats)
+    _add_id_length_argument(stats)
+
+    export = subcommands.add_parser("export", help="需求 3：导出清洗后的干净数据")
+    _add_input_argument(export)
+    _add_encoding_argument(export)
+    _add_out_dir_argument(export)
+    _add_id_length_argument(export)
+
+    run_all = subcommands.add_parser("all", help="一条龙：概览 → 校验 → 统计 → 导出")
+    _add_input_argument(run_all)
+    _add_encoding_argument(run_all)
+    _add_out_dir_argument(run_all)
+    _add_id_length_argument(run_all)
 
     return parser
 
@@ -98,13 +126,45 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(overview_module.format_overview(overview, column_tuple, source=args.csv))
         return 0
 
-    if args.command == "validate":
-        result = validator_module.validate(records, column_tuple, id_length=args.id_length)
-        print(validator_module.format_validation_report(result))
-        path = write_issues_csv(result, issues_csv_path(args.out_dir), column_tuple)
-        print()
-        print(f"问题清单已导出：{path}")
-        return 0
+    result = validator_module.validate(records, column_tuple, id_length=args.id_length)
+    stats = stats_module.build_stats(result.clean_records)
+    written: list[Path] = []
 
-    print(f"[错误] 暂不支持的子命令：{args.command}", file=sys.stderr)
-    return 1
+    if args.command == "validate":
+        print(validator_module.format_validation_report(result))
+        written.append(write_issues_csv(result, issues_csv_path(args.out_dir), column_tuple))
+
+    elif args.command == "stats":
+        print(stats_module.format_stats(stats, source_rows=len(records)))
+        written.append(write_stats_csv(stats, stats_csv_path(args.out_dir)))
+        written.append(write_fill_csv(stats, fill_csv_path(args.out_dir)))
+
+    elif args.command == "export":
+        print(f"原始数据 {len(records)} 行，清洗后 {len(result.clean_records)} 行")
+        written.append(
+            write_records_csv(result.clean_records, clean_csv_path(args.out_dir), column_tuple)
+        )
+
+    elif args.command == "all":
+        overview = overview_module.build_overview(records, column_tuple)
+        print(overview_module.format_overview(overview, column_tuple, source=args.csv))
+        print()
+        print(validator_module.format_validation_report(result))
+        print()
+        print(stats_module.format_stats(stats, source_rows=len(records)))
+        written.append(write_issues_csv(result, issues_csv_path(args.out_dir), column_tuple))
+        written.append(write_stats_csv(stats, stats_csv_path(args.out_dir)))
+        written.append(write_fill_csv(stats, fill_csv_path(args.out_dir)))
+        written.append(
+            write_records_csv(result.clean_records, clean_csv_path(args.out_dir), column_tuple)
+        )
+
+    else:  # pragma: no cover - argparse 已收敛取值范围
+        print(f"[错误] 暂不支持的子命令：{args.command}", file=sys.stderr)
+        return 1
+
+    if written:
+        print()
+        for path in written:
+            print(f"已导出：{path}")
+    return 0
